@@ -337,8 +337,12 @@ TRUE = {t}{R}{U}{E}
 }
 
 <STRING>. {
-  string_buf.setLength(string_buf.length() + 1);
-  string_buf.insert(string_buf.length()-1, yytext());
+  if (string_buf.length() > MAX_STR_CONST) {
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+  } else {
+    string_buf.setLength(string_buf.length() + 1);
+    string_buf.insert(string_buf.length()-1, yytext());
+  }
 }
 
 <YYINITIAL>{SINGLELINE_COMMENT_START} {

@@ -25,14 +25,14 @@ class CoolLexer implements java_cup.runtime.Scanner {
     StringBuffer string_buf = new StringBuffer();
     private int curr_lineno = 1;
     int get_curr_lineno() {
-	return curr_lineno;
+    return curr_lineno;
     }
     private AbstractSymbol filename;
     void set_filename(String fname) {
-	filename = AbstractTable.stringtable.addString(fname);
+    filename = AbstractTable.stringtable.addString(fname);
     }
     AbstractSymbol curr_filename() {
-	return filename;
+    return filename;
     }
 	private java.io.BufferedReader yy_reader;
 	private int yy_buffer_index;
@@ -514,13 +514,13 @@ class CoolLexer implements java_cup.runtime.Scanner {
  *  work.  */
     switch(yy_lexical_state) {
     case YYINITIAL:
-	/* nothing special to do in the initial state */
-	break;
-	/* If necessary, add code for other states here, e.g:
-	   case COMMENT:
-	   ...
-	   break;
-	*/
+    /* nothing special to do in the initial state */
+    break;
+    /* If necessary, add code for other states here, e.g:
+       case COMMENT:
+       ...
+       break;
+    */
     case MULTI_LINE_COMMENT:
       yybegin(YYINITIAL);
       return new Symbol(TokenConstants.ERROR, "EOF in Comment");
@@ -852,8 +852,12 @@ class CoolLexer implements java_cup.runtime.Scanner {
 						break;
 					case 50:
 						{
-  string_buf.setLength(string_buf.length() + 1);
-  string_buf.insert(string_buf.length()-1, yytext());
+  if (string_buf.length() > MAX_STR_CONST) {
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+  } else {
+    string_buf.setLength(string_buf.length() + 1);
+    string_buf.insert(string_buf.length()-1, yytext());
+  }
 }
 					case -51:
 						break;
