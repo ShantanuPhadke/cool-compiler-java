@@ -1,102 +1,172 @@
-/*
- *  cool.cup
- *              Parser definition for the COOL language.
- *
- */
+class Main inherits IO {
+	flag : Bool <- true;
+	char : String;
+	int: Int;
+	l : List <- new List;	
+	
+	getInput(): String {
+		in_string()
+	};
 
-import java_cup.runtime.*;
+	getIntInput(): Int {
+		in_int()
+	};
 
-/* Stuff enclosed in {: :} is copied verbatim to the class containing
-all parser actions.  All the extra variables/functions you want to use
-in the semantic actions should go here.  Don't remove or modify anything
-that was there initially.  */
+	main(): Object {
+		while flag loop {
+			out_string(">");
+			char <- getInput();
+			--int <- getIntInput();
+			if char = "x" then flag <- false else
+			if char = "s" then l <- (new StringCommand).init().apply_command(l, char, 0) else
+			if char = "+" then l <- (new StringCommand).init().apply_command(l, char, 0) else
+			if char = "d" then (new DisplayCommand).init().apply_command(l, char, 0) else
+			if char = "e" then l <- (new EvalCommand).init().apply_command(l, char, 0) else
+			l <- (new IntCommand).init().apply_command(l,"",new A2I.a2i(char))	
+			fi fi fi fi fi;
+		}
+		pool
+	};
 
-action code {: 
+	
+};
 
-    int curr_lineno() {
-	return ((CoolTokenLexer)parser.getScanner()).curr_lineno();
-    }
-
-    AbstractSymbol curr_filename() {
-	return ((CoolTokenLexer)parser.getScanner()).curr_filename();
-    }
-:} 
-
-/************************************************************************/
-/*                DONT CHANGE ANYTHING IN THIS SECTION                  */
-
-parser code {:
-    int omerrs = 0;
-
-    public void syntax_error(Symbol cur_token) {
-        int lineno = action_obj.curr_lineno();
-	String filename = action_obj.curr_filename().getString();
-        System.err.print("\"" + filename + "\", line " + lineno + 
-		         ": parse error at or near ");
-        Utilities.printToken(cur_token);
-	omerrs++;
-	if (omerrs>50) {
-	   System.err.println("More than 50 errors");
-	   System.exit(1);
+class StackObject inherits Object {
+      type: String;
+      intValue: Int;
+      stringValue: String;
+      
+      getType() : String { type };
+      getIntValue() : Int { intValue };
+      getStringValue() : String { stringValue };
+      init(typeVal: String, intVal: Int, strValue: String) : StackObject {
+      	{
+		type <- typeVal;
+		intValue <- intVal;
+		stringValue <- strValue;
+		self;
 	}
-    }
+      };
+};
 
-    public void unrecovered_syntax_error(Symbol cur_token) {
-    }
-:}
+class List {
+      isNil() : Bool { true };
+      head() : StackObject { { abort(); new StackObject; } };
+      tail() : List { {  self; } };
+      cons(i : StackObject) : List {
+      	     (new Cons).init(i, self)
+      };
+};
 
-/* Declare the terminals; a few have types for associated lexemes.  The
-token ERROR is never used in the parser; thus, it is a parse error when
-the lexer returns it.  */
+class Cons inherits List {
+      car : StackObject;
+      cdr : List;
+      isNil() : Bool { false };
+      head() : StackObject { car };
+      tail() : List { cdr };
+      init(i: StackObject, rest: List) : List {
+      	  {
+		car <- i;
+		cdr <- rest;
+		self;
+	   }
+      };
+};
 
-terminal CLASS, ELSE, FI, IF, IN, INHERITS, LET, LET_STMT, LOOP, POOL, THEN, WHILE;
-terminal CASE, ESAC, OF, DARROW, NEW, ISVOID;
-terminal ASSIGN, NOT, LE, ERROR;
-terminal PLUS, DIV, MINUS, MULT, EQ, LT, DOT, NEG, COMMA, SEMI, COLON;
-terminal LPAREN, RPAREN, AT, LBRACE, RBRACE;
-terminal AbstractSymbol STR_CONST, INT_CONST;
-terminal Boolean BOOL_CONST;
-terminal AbstractSymbol TYPEID, OBJECTID;
+class StackCommand inherits IO {
+        head : StackObject;
+	list : List;
+	
+	init() : StackCommand {
+	   {
+	       self;
+	   }	      
+	};
 
-/*  DON'T CHANGE ANYTHING ABOVE THIS LINE, OR YOUR PARSER WONT WORK       */
-/**************************************************************************/
+	apply_command(l: List, symbol: String, int: Int) : List {
+		list <- new List.cons(new StackObject)
+	};
 
-   /* Complete the nonterminal list below, giving a type for the semantic
-      value of each non terminal. (See the CUP documentation for details. */
+        print_list(l: List) : Object {
+		if l.isNil() then 0  else
+	        if l.head().getType() = "int" then
+		   {
+	               out_int(l.head().getIntValue());
+		       out_string("\n");
+		       print_list(l.tail());
+		   }
+	        else {
+	               out_string(l.head().getStringValue());
+		       out_string("\n");
+		       print_list(l.tail());
+		   }
+	        fi fi
+       };	
+};
 
-nonterminal programc program;
-nonterminal Classes class_list;
-nonterminal class_c class;
-nonterminal Features dummy_feature_list;
+class IntCommand inherits StackCommand {
+      newList : List;
+      intStackObj : StackObject;
+      apply_command(l: List, symbol: String, int: Int) : List {
+         {
+	     intStackObj <- (new StackObject).init("int", int, symbol); 
+             newList <- (new Cons).init(intStackObj, l);
+	     newList;
+         }
+      };
+};
 
-/* Precedence declarations go here. */
+class StringCommand inherits StackCommand {
+      newList : List;
+      strStackObj : StackObject;
+      apply_command(l: List, symbol: String, int: Int) : List {
+         {
+	     strStackObj <- (new StackObject).init("str", int, symbol);
+             newList <- (new Cons).init(strStackObj, l);
+	     newList;
+         }
+      };
+};
 
-program	
-	::= class_list:cl
-	    {: RESULT = new programc(curr_lineno(), cl); :}
-        ;
+class DisplayCommand inherits StackCommand {
+      apply_command(l: List, symbol: String, int: Int) : List {
+          {
+	      print_list(l);
+	      l;
+          }
+      };
+};
 
-class_list
-	/* single class */
-	::= class:c
-	    {: RESULT = (new Classes(curr_lineno())).appendElement(c); :}
-	/* several classes */
-	| class_list:cl class:c
-	    {: RESULT = cl.appendElement(c); :}
-	;
+class EvalCommand inherits StackCommand {
+     int1 : Int;
+     int2 : Int;
+     addResult : StackObject;
+     stackObj1 : StackObject;
+     stackObj2 : StackObject;
+     
+     evaluate_add(l: List) : List {
+        {
+     	    int1 <- l.tail().head().getIntValue();
+	    int2 <- l.tail().tail().head().getIntValue();
+	    addResult <- (new StackObject).init("int",int1+int2,"");
+	    (new Cons).init(addResult, l.tail().tail().tail());
+         }
+     };
 
-/* If no parent is specified, the class inherits from the Object class */
-class
-	::= CLASS TYPEID:n LBRACE dummy_feature_list:f RBRACE SEMI
-	    {: RESULT = new class_c(curr_lineno(), n, 
-		                   AbstractTable.idtable.addString("Object"), 
-				   f, curr_filename()); :}
-	| CLASS TYPEID:n INHERITS TYPEID:p LBRACE dummy_feature_list:f RBRACE SEMI
-	    {: RESULT = new class_c(curr_lineno(), n, p, f, curr_filename()); :}
-	;
+     evaluate_swap(l: List) : List {
+         {
+             stackObj1 <- l.tail().head();
+	     stackObj2 <- l.tail().tail().head();
+	     l <- (new Cons).init(stackObj1, l.tail().tail().tail());
+	     l <- (new Cons).init(stackObj2, l);
+	     l;
+	 }
+     };
 
-/* Feature list may be empty, but no empty features in list. */
-dummy_feature_list
-	::= /* empty */
-	    {: RESULT = new Features(curr_lineno()); :}
-	;
+     apply_command(l: List, symbol: String, int: Int) : List {
+	 if l.head().getStringValue() = "+" then evaluate_add(l) else
+	 if l.head().getStringValue() = "s" then evaluate_swap(l) else l
+	 fi fi
+     };
+};
+
