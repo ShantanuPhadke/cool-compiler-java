@@ -70,40 +70,23 @@ nonterminal class_c class;
 nonterminal Features dummy_feature_list;
 nonterminal Feature dummy_feature;
 nonterminal Formals formals_list;
-nonterminal comp comp_sem;
 nonterminal Formal formal_sem;
-nonterminal formalc formalc_sem;
-nonterminal method method_sem;
-nonterminal attr attr_sem;
-nonterminal Formals formal_list;
 nonterminal Expression expr;
 nonterminal Expressions expr_list;
-nonterminal assign assign_sem;
-nonterminal plus plus_sem;
-nonterminal sub sub_sem;
-nonterminal mul mul_sem;
-nonterminal divide divide_sem;
-nonterminal neg neg_sem;
-nonterminal lt lt_sem;
-nonterminal eq eq_sem;
-nonterminal leq leq_sem;
-nonterminal no_expr no_expr_sem;
-nonterminal cond cond_sem;
-nonterminal loop loop_sem;
-nonterminal block block_sem;
-nonterminal new_ new_sem;
-nonterminal isvoid isvoid_sem;
-nonterminal object object_sem;
-nonterminal int_const int_const_sem;
-nonterminal str_const str_const_sem;
-nonterminal bool_const bool_const_sem;
-nonterminal typcase typcase_sem;
 nonterminal Cases cases_sem;
-nonterminal dispatch dispatch_sem;
-nonterminal static_dispatch static_dispatch_sem;
-nonterminal branch branch_sem;
+nonterminal Case branch_sem;
 
-/* Precedence declarations go here. */
+/* Precedence declarations go here - Based on http://openclassroom.stanford.edu/MainFolder/courses/Compilers/docs/handouts/cool-manual.pdf page 16
+ Note: In CUP the precedences are list from lowest to highest */
+precedence right ASSIGN;
+precedence left NOT;
+precedence nonassoc LE, LT, EQ;
+precedence left PLUS, MINUS;
+precedence left MULT, DIV;
+precedence left ISVOID;
+precedence left NEG;
+precedence left AT;
+precedence left DOT;
 
 program	
 	::= class_list:cl
@@ -148,24 +131,24 @@ dummy_feature_list
 	::= /* empty */
 	{: RESULT = new Features(curr_lineno()); :}
 	|
-	dummy_feature:df
+	dummy_feature:df SEMI
 	{: RESULT = (new Features(curr_lineno())).appendElement(df); :}
 	|
-	dummy_feature_list:dfl dummy_feature:df
+	dummy_feature_list:dfl dummy_feature:df SEMI
 	{: RESULT = dfl.appendElement(df); :}
 	|
-	error;
+	error:e SEMI
+	{: RESULT = null;  :};
 
 dummy_feature
-	::= OBJECTID:o LPAREN formals_list:f RPAREN COLON TYPEID:t LBRACE expr:e RBRACE SEMI
+	::= OBJECTID:o LPAREN formals_list:f RPAREN COLON TYPEID:t LBRACE expr:e RBRACE
 	{: RESULT = new method(curr_lineno(), o, f, t, e); :}
 	|
-	OBJECTID:o COLON TYPEID:t ASSIGN expr:e SEMI
+	OBJECTID:o COLON TYPEID:t ASSIGN expr:e
 	{: RESULT = new attr(curr_lineno(), o, t, e); :}
 	|
-	OBJECTID:o COLON TYPEID:t SEMI
-	{: RESULT = new attr(curr_lineno(), o, t, new no_expr(curr_lineno())); :}
-	;
+	OBJECTID:o COLON TYPEID:t
+	{: RESULT = new attr(curr_lineno(), o, t, new no_expr(curr_lineno())); :};
 
 cases_sem
 	::= branch_sem:bs
@@ -184,32 +167,32 @@ expr_list
 	::= /* empty */
 	{: RESULT = new Expressions(curr_lineno()); :}
 	|
-	expr:e SEMI
-	{: RESULT = (new Expressions(curr_lineno())).appendElement(e); :}
-	|
 	expr:e
 	{: RESULT = (new Expressions(curr_lineno())).appendElement(e); :}
 	|
 	expr_list:el COMMA expr:e
 	{: RESULT = el.appendElement(e); :}
 	|
+	expr:e SEMI
+	{: RESULT = new Expressions(curr_lineno()).appendElement(e); :}
+	|
 	expr_list:el expr:e SEMI
-	{: RESULT = el.appendElement(e); :};
+	{: RESULT = new Expressions(curr_lineno()).appendElement(e); :};
 
 expr
 	::= OBJECTID:n ASSIGN expr:e
 	{: RESULT = new assign(curr_lineno(), n, e); :}
 	|
-	OBJECTID:o LPAREN RPAREN
-	{: RESULT = new object(curr_lineno(), o); :}
-	|
-	OBJECTID:o LPAREN expr_list:el RPAREN
-	{: RESULT = new dispatch(curr_lineno(), new no_expr(curr_lineno()), o, el); :}
-	|
 	expr:e DOT OBJECTID:o LPAREN expr_list:el RPAREN
 	{: RESULT = new dispatch(curr_lineno(), e, o, el); :}
 	|
-	expr:e AT TYPEID:t DOT OBJECTID:o LPAREN expr_list:el RPAREN
+	OBJECTID:o LPAREN expr_list:el RPAREN
+	{: 
+	   AbstractSymbol self = AbstractTable.idtable.addString("self");
+	   RESULT = new dispatch(curr_lineno(), new object(curr_lineno(), self), o, el); 
+	:}
+	|
+        expr:e AT TYPEID:t DOT OBJECTID:o LPAREN expr_list:el RPAREN
 	{: RESULT = new static_dispatch(curr_lineno(), e, t, o, el); :}
 	|
 	IF expr:e1 THEN expr:e2 ELSE expr:e3 FI
@@ -218,7 +201,7 @@ expr
 	WHILE expr:e1 LOOP expr:e2 POOL
 	{: RESULT = new loop(curr_lineno(), e1, e2);  :}
 	|
-	LBRACE expr_list:e RBRACE
+        LBRACE expr_list:e RBRACE
 	{: RESULT = new block(curr_lineno(), e); :}
 	|
 	LET OBJECTID:n COLON TYPEID:p ASSIGN expr:e1 IN expr:e2
@@ -227,7 +210,7 @@ expr
 	LET OBJECTID:n COLON TYPEID:p IN expr:e1
 	{: RESULT = new let(curr_lineno(), n, p, new no_expr(curr_lineno()), e1); :}
 	|
-	CASE expr:e OF cases_sem:c ESAC
+        CASE expr:e OF cases_sem:c ESAC
 	{: RESULT = new typcase(curr_lineno(), e, c); :}
 	|
 	NEW TYPEID:n
@@ -236,7 +219,7 @@ expr
 	ISVOID expr:e
 	{: RESULT = new isvoid(curr_lineno(), e); :}
 	|
-	expr:e1 PLUS expr:e2
+        expr:e1 PLUS expr:e2
 	{: RESULT = new plus(curr_lineno(), e1, e2); :}
 	|
 	expr:e1 MINUS expr:e2
@@ -245,7 +228,7 @@ expr
 	expr:e1 MULT expr:e2
 	{: RESULT = new mul(curr_lineno(), e1, e2); :}
 	|
-	expr:e1 DIV expr:e2
+        expr:e1 DIV expr:e2
 	{: RESULT = new divide(curr_lineno(), e1, e2); :}
 	|
 	NEG expr:e
@@ -254,7 +237,7 @@ expr
 	expr:e1 LT expr:e2
 	{: RESULT = new lt(curr_lineno(), e1, e2); :}
 	|
-	expr:e1 LE expr:e2
+        expr:e1 LE expr:e2
 	{: RESULT = new leq(curr_lineno(), e1, e2); :}
 	|
 	expr:e1 EQ expr:e2
@@ -263,8 +246,8 @@ expr
 	NOT expr:e
 	{: RESULT = new comp(curr_lineno(), e); :}
 	|
-	LPAREN expr_list:e RPAREN
-	{: RESULT = new block(curr_lineno(), e); :}
+        LPAREN expr:e RPAREN
+	{: RESULT = e; :}
 	|
 	OBJECTID:n
 	{: RESULT = new object(curr_lineno(), n); :}
@@ -272,9 +255,8 @@ expr
 	INT_CONST:p
 	{: RESULT = new int_const(curr_lineno(), p); :}
 	|
-	STR_CONST:p
+        STR_CONST:p
 	{: RESULT = new string_const(curr_lineno(), p); :}
 	|
 	BOOL_CONST:p
 	{: RESULT = new bool_const(curr_lineno(), p); :};
-	
