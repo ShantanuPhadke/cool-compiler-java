@@ -20,7 +20,8 @@ PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
 */
 
 // This is a project skeleton file
-
+import java.util.HashMap;
+import java.util.Enumeration;
 import java.io.PrintStream;
 
 /** This class may be used to contain the semantic information such as
@@ -202,10 +203,16 @@ class ClassTable {
 
 
     public ClassTable(Classes cls) {
-	semantErrors = 0;
-	errorStream = System.err;
+		semantErrors = 0;
+		errorStream = System.err;
 	
-	/* fill this in */
+		/* fill this in */
+		HashMap<AbstractSymbol, AbstractSymbol> childToParent = new HashMap<>();
+		Enumeration<class_c> enumeration = cls.getElements();
+		while (enumeration.hasMoreElements()) {
+			class_c class = enumeration.nextElement();
+
+		}
     }
 
     /** Prints line number and file name of the given class.
@@ -218,7 +225,7 @@ class ClassTable {
      *
      * */
     public PrintStream semantError(class_c c) {
-	return semantError(c.getFilename(), c);
+		return semantError(c.getFilename(), c);
     }
 
     /** Prints the file name and the line number of the given tree node.
@@ -232,8 +239,8 @@ class ClassTable {
      *
      * */
     public PrintStream semantError(AbstractSymbol filename, TreeNode t) {
-	errorStream.print(filename + ":" + t.getLineNumber() + ": ");
-	return semantError();
+		errorStream.print(filename + ":" + t.getLineNumber() + ": ");
+		return semantError();
     }
 
     /** Increments semantic error count and returns the print stream for
@@ -244,18 +251,18 @@ class ClassTable {
      *
      * */
     public PrintStream semantError() {
-	semantErrors++;
-	return errorStream;
+		semantErrors++;
+		eturn errorStream;
     }
 
     /** Returns true if there are any static semantic errors. */
     public boolean errors() {
-	return semantErrors != 0;
+		return semantErrors != 0;
     }
 
     // NOT TO BE INCLUDED IN SKELETON
     public static void main(String[] args) {
-	new ClassTable(null).installBasicClasses();
+		new ClassTable(null).installBasicClasses();
     }
 }
 			  
