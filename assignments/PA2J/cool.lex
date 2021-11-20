@@ -21,20 +21,29 @@ import java_cup.runtime.Symbol;
 
     private int curr_lineno = 1;
     int get_curr_lineno() {
-    return curr_lineno;
+  return curr_lineno;
+    }
+
+    // For keeping track of comment depth (nested comment blocks)
+    private int curr_comment_depth = 0;
+    int get_curr_comment_depth() {
+       return curr_comment_depth;
     }
 
     private AbstractSymbol filename;
 
     void set_filename(String fname) {
-    filename = AbstractTable.stringtable.addString(fname);
+  filename = AbstractTable.stringtable.addString(fname);
     }
 
     AbstractSymbol curr_filename() {
-    return filename;
+  return filename;
     }
 %}
 
+%state STRING_LENGTH_ERROR
+%state NULL_CHARACTER_STRING_ERROR
+%state NEWLINE_STRING_ERROR
 %state STRING
 %state SINGLE_LINE_COMMENT
 %state MULTI_LINE_COMMENT
@@ -51,12 +60,18 @@ NEWLINE = \n
 FORMFEED = \f
 CARRIAGE_RETURN = \r
 TAB = \t
-VERTICAL_TAB = \v
-WHITESPACE = ([ ]|{FORMFEED}|{CARRIAGE_RETURN}|{TAB}|{VERTICAL_TAB})+
+VERTICAL_TAB = \013
+BACKSPACE = \b
+NULL_CHARACTER = \0
+SPACE = " "
+WHITESPACE = ({SPACE}|{FORMFEED}|{CARRIAGE_RETURN}|{TAB}|{VERTICAL_TAB})+
 STRING = ({LETTER}|{DIGIT}|{WHITESPACE})*
 SINGLELINE_COMMENT_START = --
 MULTILINE_COMMENT_START = "(*"
 MULTILINE_COMMENT_END = "*)"
+BACKSLASH = \\
+ESCAPED_CHARACTER = {BACKSLASH}([^b]|[^t]|[^n]|[^f])
+ESCAPED_NEWLINE = {BACKSLASH}{NEWLINE}
 
 C = [Cc]
 L = [Ll]
@@ -118,13 +133,13 @@ TRUE = {t}{R}{U}{E}
 
     switch(yy_lexical_state) {
     case YYINITIAL:
-    /* nothing special to do in the initial state */
-    break;
-    /* If necessary, add code for other states here, e.g:
-       case COMMENT:
-       ...
-       break;
-    */
+  /* nothing special to do in the initial state */
+  break;
+  /* If necessary, add code for other states here, e.g:
+     case COMMENT:
+     ...
+     break;
+  */
     case MULTI_LINE_COMMENT:
       yybegin(YYINITIAL);
       return new Symbol(TokenConstants.ERROR, "EOF in Comment");
@@ -139,12 +154,19 @@ TRUE = {t}{R}{U}{E}
 %cup
 
 %%
-
 <YYINITIAL>"=>" {
   /* Sample lexical rule for "=>" arrow.
      Further lexical rules should be defined
      here, after the last %% separator */
   return new Symbol(TokenConstants.DARROW);
+}
+
+<YYINITIAL>{VERTICAL_TAB} {
+  curr_lineno+=1;
+}
+
+<YYINITIAL>{CARRIAGE_RETURN} {
+  curr_lineno+=1;
 }
 
 <YYINITIAL>{NEWLINE} {
@@ -327,23 +349,150 @@ TRUE = {t}{R}{U}{E}
   return new Symbol(TokenConstants.STR_CONST, strEntry);
 }
 
-<STRING>\0 {
+<STRING>\\\" {
+  if (string_buf.length() >= MAX_STR_CONST-1) {
+    yybegin(STRING_LENGTH_ERROR);
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+  } else {
+    string_buf.append(yytext().substring(1));
+  }
+}
+
+<STRING>\\{NEWLINE} {
+  if (string_buf.length() >= MAX_STR_CONST-1) {
+    yybegin(STRING_LENGTH_ERROR);
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+  } else {
+    string_buf.append(yytext().substring(1));
+    // Still go to the next line even though the newline is escaped
+    curr_lineno+=1;
+  }
+}
+
+<STRING>\\t {
+  if (string_buf.length() >= MAX_STR_CONST-1) {
+    yybegin(STRING_LENGTH_ERROR);
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+  } else {
+    string_buf.append("\t");
+  }
+}
+
+<STRING>\\f {
+  if (string_buf.length() >= MAX_STR_CONST-1) {
+    yybegin(STRING_LENGTH_ERROR);
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+  } else {
+    string_buf.append("\f");
+  }
+}
+
+<STRING>\\n {
+  if (string_buf.length() >= MAX_STR_CONST-1) {
+    yybegin(STRING_LENGTH_ERROR);
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+  } else {
+    string_buf.append("\n");
+  }
+}
+
+<STRING>\\b {
+  if (string_buf.length() >= MAX_STR_CONST-1) {
+    yybegin(STRING_LENGTH_ERROR);
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+  } else {
+    string_buf.append("\b");
+  }
+}
+
+<STRING>{VERTICAL_TAB} {
+   if (string_buf.length() >= MAX_STR_CONST-1) {
+    yybegin(STRING_LENGTH_ERROR);
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+   } else {
+     string_buf.append(yytext());
+   }
+}
+
+<STRING>{CARRIAGE_RETURN} {
+   if (string_buf.length() >= MAX_STR_CONST-1) {
+    yybegin(STRING_LENGTH_ERROR);
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+   } else {
+     string_buf.append(yytext());
+   }
+}
+
+<STRING>\\{NULL_CHARACTER} {
+  yybegin(NULL_CHARACTER_STRING_ERROR);
+  return new Symbol(TokenConstants.ERROR, "String contains escaped null character");
+}
+
+<STRING>{NULL_CHARACTER} {
+  yybegin(NULL_CHARACTER_STRING_ERROR);
   return new Symbol(TokenConstants.ERROR, "String contains null character");
 }
  
 <STRING>{NEWLINE} {
   curr_lineno+=1;
+  yybegin(YYINITIAL);
+  //yybegin(NEWLINE_STRING_ERROR);
   return new Symbol(TokenConstants.ERROR, "Unterminated string constant");
 }
 
-<STRING>. {
-  if (string_buf.length() > MAX_STR_CONST) {
+<STRING>{ESCAPED_CHARACTER} {
+  if (string_buf.length() >= MAX_STR_CONST-1) {
+    yybegin(STRING_LENGTH_ERROR);
     return new Symbol(TokenConstants.ERROR, "String constant too long");
   } else {
-    string_buf.setLength(string_buf.length() + 1);
-    string_buf.insert(string_buf.length()-1, yytext());
+    string_buf.append(yytext().substring(1));
   }
 }
+
+<STRING>\\{DIGIT} {
+  if (string_buf.length() >= MAX_STR_CONST-1) {
+    yybegin(STRING_LENGTH_ERROR);
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+  } else {
+    string_buf.append(yytext().substring(1));
+  }
+}
+
+<STRING>\\ {
+  if (string_buf.length() >= MAX_STR_CONST-1) {
+    yybegin(STRING_LENGTH_ERROR);
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+  } else {
+    string_buf.append(yytext());
+  }
+}
+
+<STRING>. {
+  if (string_buf.length() >= MAX_STR_CONST-1) {
+    yybegin(STRING_LENGTH_ERROR);
+    return new Symbol(TokenConstants.ERROR, "String constant too long");
+  } else {
+    string_buf.append(yytext());
+    //return new Symbol(TokenConstants.ERROR, "" + string_buf.length() + ", " + yytext());
+  }
+}
+
+<STRING_LENGTH_ERROR>\" {
+  yybegin(YYINITIAL);
+}
+
+<STRING_LENGTH_ERROR> . {}
+
+<NULL_CHARACTER_STRING_ERROR>\" {
+  yybegin(YYINITIAL);
+}
+
+<NULL_CHARACTER_STRING_ERROR>{NEWLINE} {
+  curr_lineno+=1;
+  yybegin(YYINITIAL);
+}
+
+<NULL_CHARACTER_STRING_ERROR>. {}
 
 <YYINITIAL>{SINGLELINE_COMMENT_START} {
   yybegin(SINGLE_LINE_COMMENT);
@@ -358,6 +507,7 @@ TRUE = {t}{R}{U}{E}
 }
 
 <YYINITIAL>{MULTILINE_COMMENT_START} {
+  curr_comment_depth+=1;
   yybegin(MULTI_LINE_COMMENT);
 }
 
@@ -366,15 +516,26 @@ TRUE = {t}{R}{U}{E}
   return new Symbol(TokenConstants.ERROR, "Unmatched *)");
 }
 
-<MULTI_LINE_COMMENT>. {}
-
 <MULTI_LINE_COMMENT>{NEWLINE} {
   curr_lineno+=1;
 }
 
-<MULTI_LINE_COMMENT>{MULTILINE_COMMENT_END} {
-  yybegin(YYINITIAL);
+<MULTI_LINE_COMMENT>{CARRIAGE_RETURN} {
+  curr_lineno+=1;
 }
+
+<MULTI_LINE_COMMENT>{MULTILINE_COMMENT_START} {
+  curr_comment_depth+=1;
+}
+
+<MULTI_LINE_COMMENT>{MULTILINE_COMMENT_END} {
+  curr_comment_depth-=1;
+  if (get_curr_comment_depth() == 0) {
+    yybegin(YYINITIAL);
+  }
+}
+
+<MULTI_LINE_COMMENT>. {}
 
 <YYINITIAL>{WHITESPACE} {}
 
