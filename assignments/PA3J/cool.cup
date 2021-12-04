@@ -98,12 +98,14 @@ program
 class_list
 	/* single class */
 	::= class:c
-	    {: RESULT = (new Classes(curr_lineno())).appendElement(c); :}
+	{: RESULT = (new Classes(curr_lineno())).appendElement(c); :}
 	/* several classes */
 	| class_list:cl class:c
-	    {: RESULT = cl.appendElement(c); :};
+	{: RESULT = cl.appendElement(c); :}
+	| class_list:cl error SEMI
+	{: RESULT = cl; :};
 
-/* If no parent is specified, the class inherits from the Object class */
+ /* If no parent is specified, the class inherits from the Object class */
 class
 	::= CLASS TYPEID:n LBRACE dummy_feature_list:f RBRACE SEMI
 	    {: RESULT = new class_c(curr_lineno(), n, 
@@ -111,9 +113,8 @@ class
 				   f, curr_filename()); :}
 	| CLASS TYPEID:n INHERITS TYPEID:p LBRACE dummy_feature_list:f RBRACE SEMI
 	    {: RESULT = new class_c(curr_lineno(), n, p, f, curr_filename()); :}
-	/* If a class definition is incorrect, but the class is terminated properly, the parser should continue */
-	| error SEMI
-	  {: RESULT = null; :};
+	| CLASS TYPEID:n INHERITS error LBRACE dummy_feature_list:f RBRACE SEMI
+	    {: RESULT = null; :};
 
 formals_list
 	::= /* empty */
@@ -133,25 +134,33 @@ formal_sem
 dummy_feature_list
 	::= /* empty */
 	{: RESULT = new Features(curr_lineno()); :}
-	|
+	| 
 	dummy_feature:df SEMI
 	{: RESULT = (new Features(curr_lineno())).appendElement(df); :}
 	|
 	dummy_feature_list:dfl dummy_feature:df SEMI
 	{: RESULT = dfl.appendElement(df); :}
 	|
-	error SEMI
-	{: RESULT = null; :};
+	error SEMI;
 
 dummy_feature
 	::= OBJECTID:o LPAREN formals_list:f RPAREN COLON TYPEID:t LBRACE expr:e RBRACE
 	{: RESULT = new method(curr_lineno(), o, f, t, e); :}
 	|
+	OBJECTID:o COLON TYPEID:t
+	{: RESULT = new attr(curr_lineno(), o, t, new no_expr(curr_lineno())); :}
+	|
 	OBJECTID:o COLON TYPEID:t ASSIGN expr:e
 	{: RESULT = new attr(curr_lineno(), o, t, e); :}
 	|
-	OBJECTID:o COLON TYPEID:t
-	{: RESULT = new attr(curr_lineno(), o, t, new no_expr(curr_lineno())); :};
+	error COLON TYPEID:t
+	{: RESULT = null; :}
+	|
+	OBJECTID:o COLON error
+	{: RESULT = null; :}
+	|
+	OBJECTID:o LPAREN formals_list:f RPAREN COLON TYPEID:t LBRACE error RBRACE
+	{: RESULT = null; :};
 
 cases_sem
 	::= branch_sem:bs
@@ -172,7 +181,10 @@ expr_list
 	{: RESULT = (new Expressions(curr_lineno())).appendElement(e); :}
 	|
 	expr_list:el COMMA expr:e
-	{: RESULT = el.appendElement(e); :};	
+	{: RESULT = el.appendElement(e); :}
+	|
+	error COMMA
+	{: RESULT = null; :};
 
 block_expr_list
 	::= expr:e SEMI
@@ -181,24 +193,25 @@ block_expr_list
 	block_expr_list:bel expr:e SEMI
 	{: RESULT = bel.appendElement(e); :}
 	|
-	error SEMI
-	{: RESULT = null; :};
+	error SEMI block_expr_list:bel;
 
 let_expr
-	::= COMMA OBJECTID:o COLON TYPEID:t ASSIGN expr:e1 IN expr:e2
+	::= OBJECTID:o COLON TYPEID:t ASSIGN expr:e1 IN expr:e2
 	{: RESULT = new let(curr_lineno(), o, t, e1, e2); :}
 	|
-	COMMA OBJECTID:o COLON TYPEID:t IN expr:e
+	OBJECTID:o COLON TYPEID:t IN expr:e
 	{: RESULT = new let(curr_lineno(), o, t, new no_expr(curr_lineno()), e); :}
 	|
-	COMMA OBJECTID:o COLON TYPEID:t ASSIGN expr:e1 let_expr:le
+	OBJECTID:o COLON TYPEID:t ASSIGN expr:e1 COMMA let_expr:le
 	{: RESULT = new let(curr_lineno(), o, t, e1, le); :}
 	|
-	COMMA OBJECTID:o COLON TYPEID:t let_expr:le
+	OBJECTID:o COLON TYPEID:t COMMA let_expr:le
 	{: RESULT = new let(curr_lineno(), o, t, new no_expr(curr_lineno()), le); :}
 	|
-	error let_expr:le
-	{: RESULT = le; :};
+	error COMMA let_expr:le
+	{: RESULT = le; :}
+	|
+	error IN expr;
 
 expr
 	::= OBJECTID:n ASSIGN expr:e
@@ -213,7 +226,7 @@ expr
 	   RESULT = new dispatch(curr_lineno(), new object(curr_lineno(), self), o, el); 
 	:}
 	|
-    expr:e AT TYPEID:t DOT OBJECTID:o LPAREN expr_list:el RPAREN
+        expr:e AT TYPEID:t DOT OBJECTID:o LPAREN expr_list:el RPAREN
 	{: RESULT = new static_dispatch(curr_lineno(), e, t, o, el); :}
 	|
 	IF expr:e1 THEN expr:e2 ELSE expr:e3 FI
@@ -222,22 +235,22 @@ expr
 	WHILE expr:e1 LOOP expr:e2 POOL
 	{: RESULT = new loop(curr_lineno(), e1, e2);  :}
 	|
-    LBRACE block_expr_list:e RBRACE
+        LBRACE block_expr_list:e RBRACE
 	{: RESULT = new block(curr_lineno(), e); :}
 	|
 	LET OBJECTID:n COLON TYPEID:p ASSIGN expr:e1 IN expr:e2
 	{: RESULT = new let(curr_lineno(), n, p, e1, e2); :}
 	|
 	/* Nested let case one */
-	LET OBJECTID:n COLON TYPEID:p ASSIGN expr:e1 let_expr:le
-	{: RESULT = new let(curr_lineno(), n, p, e1, le); :}
+	LET let_expr:le
+	{: RESULT = le; :}
 	|
 	LET OBJECTID:n COLON TYPEID:p IN expr:e1
 	{: RESULT = new let(curr_lineno(), n, p, new no_expr(curr_lineno()), e1); :}
 	|
 	/* Nested let case two */
-	LET OBJECTID:n COLON TYPEID:p let_expr:le
-	{: RESULT = new let(curr_lineno(), n, p, new no_expr(curr_lineno()), le); :}
+	LET let_expr:le
+	{: RESULT = le; :}
 	|
         CASE expr:e OF cases_sem:c ESAC
 	{: RESULT = new typcase(curr_lineno(), e, c); :}
@@ -248,7 +261,7 @@ expr
 	ISVOID expr:e
 	{: RESULT = new isvoid(curr_lineno(), e); :}
 	|
-    expr:e1 PLUS expr:e2
+        expr:e1 PLUS expr:e2
 	{: RESULT = new plus(curr_lineno(), e1, e2); :}
 	|
 	expr:e1 MINUS expr:e2
@@ -275,7 +288,7 @@ expr
 	NOT expr:e
 	{: RESULT = new comp(curr_lineno(), e); :}
 	|
-    LPAREN expr:e RPAREN
+        LPAREN expr:e RPAREN
 	{: RESULT = e; :}
 	|
 	OBJECTID:n
@@ -284,8 +297,8 @@ expr
 	INT_CONST:p
 	{: RESULT = new int_const(curr_lineno(), p); :}
 	|
-    STR_CONST:p
-	{: RESULT = new string_const(curr_lineno(), p); :}
+        STR_CONST:p
+ 	{: RESULT = new string_const(curr_lineno(), p); :}
 	|
 	BOOL_CONST:p
 	{: RESULT = new bool_const(curr_lineno(), p); :};
